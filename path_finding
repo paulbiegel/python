@@ -201,10 +201,10 @@ class PathFinder:
             listNeighbours = []
 
             # 4-Way Connectivity
-            nIdx = self.p(nLocX, nLocY-1)
-            eIdx = self.p(nLocX+1, nLocY)
-            sIdx = self.p(nLocX, nLocY+1)
-            wIdx = self.p(nLocX-1, nLocY)
+            nIdx = self.p(nLocX, nLocY-1)  # Northern neighbour
+            eIdx = self.p(nLocX+1, nLocY)  # Eastern neighbour
+            sIdx = self.p(nLocX, nLocY+1)  # Southern neighbour
+            wIdx = self.p(nLocX-1, nLocY)  # Western neighbour
 
             if (self.nFlowFieldZ[nIdx] > 0 and (nLocY - 1) >= 0):
                 listNeighbours.append(
@@ -223,10 +223,10 @@ class PathFinder:
                     (nLocX - 1, nLocY, self.nFlowFieldZ[wIdx]))
 
             # 8-Way Connectivity
-            nwIdx = self.p(nLocX-1, nLocY-1)
-            neIdx = self.p(nLocX+1, nLocY-1)
-            swIdx = self.p(nLocX-1, nLocY+1)
-            seIdx = self.p(nLocX+1, nLocY+1)
+            nwIdx = self.p(nLocX-1, nLocY-1)  # North West neighbour
+            neIdx = self.p(nLocX+1, nLocY-1)  # North East neighbour
+            swIdx = self.p(nLocX-1, nLocY+1)  # South West neighbour
+            seIdx = self.p(nLocX+1, nLocY+1)  # South East neighbour
 
             if self.connectivity == 8:
                 if ((nLocX - 1) >= 0 and (nLocY - 1) >= 0 and
@@ -313,7 +313,7 @@ def main(width, height):
                     pf.nWave += 1
                 if event.key == pygame.K_a:
                     pf.nWave -= 1
-                    if pf.nWave < 0:
+                    if pf.nWave < 1:
                         pf.nWave = 1
                     if pf.nWave > max(pf.nFlowFieldZ):
                         pf.nWave = max(pf.nFlowFieldZ)
