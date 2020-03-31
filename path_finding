@@ -1,0 +1,339 @@
+# Path finding algorithm
+import pygame
+
+# Define colors
+RED = pygame.Color(255, 0, 0)
+GREEN = pygame.Color(0, 255, 0)
+BLUE = pygame.Color(0, 0, 255)
+CYAN = pygame.Color(0, 140, 140)
+YELLOW = pygame.Color(255, 255, 0)
+GREY = pygame.Color(140, 140, 140)
+WHITE = pygame.Color(255, 255, 255)
+
+
+class PathFinder:
+
+    def __init__(self, nScreenWidth, nScreenHeight):
+
+        # Set window properties
+        self.window = pygame.display.set_mode((nScreenWidth, nScreenHeight))
+
+        # Set grid properties
+        self.nBorderWidth = 4
+        self.nCellSize = 32
+        self.nMapWidth = nScreenWidth // self.nCellSize
+        self.nMapHeight = nScreenHeight // self.nCellSize
+        self.bObstacleMap = [False] * self.nMapWidth * self.nMapHeight
+        self.font = pygame.font.SysFont('Arial', 10)
+        self.bShowText = 0
+
+        # Set start and end point
+        self.nStartX = 1
+        self.nStartY = self.nMapHeight // 2
+        self.nEndX = self.nMapWidth - 2
+        self.nEndY = self.nMapHeight // 2
+
+        # Set algorithm properties
+        self.path = []
+        self.nFlowFieldZ = [0] * self.nMapWidth * self.nMapHeight
+        self.connectivity = 8
+
+        # Initialize wave value
+        self.nWave = 1
+
+        # Lambda function to find 1D index of 2D array
+        self.p = lambda x, y: y * self.nMapWidth + x
+
+    def draw_grid(self):
+        textshift = (self.nCellSize - self.nBorderWidth) // 3
+
+        for x in range(self.nMapWidth):
+            for y in range(self.nMapHeight):
+
+                color = BLUE
+                textcolor = BLUE
+
+                idx = self.p(x, y)
+                if self.bObstacleMap[idx]:
+                    color = GREY
+                    textcolor = GREY
+                if self.nWave == self.nFlowFieldZ[idx]:
+                    color = CYAN
+                    textcolor = WHITE
+                if x == self.nStartX and y == self.nStartY:
+                    color = GREEN
+                    textcolor = GREEN
+                if x == self.nEndX and y == self.nEndY:
+                    color = RED
+                    textcolor = RED
+
+                if self.bShowText:
+                    textcolor = WHITE
+
+                pygame.draw.rect(
+                    self.window,
+                    color,
+                    (x * self.nCellSize,
+                     y * self.nCellSize,
+                     self.nCellSize - self.nBorderWidth,
+                     self.nCellSize - self.nBorderWidth))
+
+                text = self.font.render(
+                    f"{self.nFlowFieldZ[idx]}", False, textcolor)
+                self.window.blit(
+                    text,
+                    (x * self.nCellSize + textshift,
+                     y * self.nCellSize + textshift))
+
+    def draw_path(self):
+        bFirstPoint = True
+        shift = (self.nCellSize - self.nBorderWidth) // 2
+        for node in self.path:
+            if bFirstPoint:
+                ox = node[0]
+                oy = node[1]
+                bFirstPoint = False
+            else:
+                pygame.draw.line(
+                    self.window,
+                    YELLOW,
+                    (ox * self.nCellSize + shift, oy * self.nCellSize + shift),
+                    (node[0] * self.nCellSize + shift,
+                     node[1] * self.nCellSize + shift))
+
+                ox = node[0]
+                oy = node[1]
+
+                pygame.draw.circle(
+                    self.window,
+                    YELLOW,
+                    (ox * self.nCellSize + shift, oy * self.nCellSize + shift),
+                    shift - 3)
+
+    def find_path(self):
+        # 1) Prepare flow field and add obstacles by setting the flow
+        # Field Height (Z) to -1.
+        for x in range(self.nMapWidth):
+            for y in range(self.nMapHeight):
+                # set obstacles
+                idx = self.p(x, y)
+                if self.bObstacleMap[idx]:
+                    self.nFlowFieldZ[idx] = -1
+                else:
+                    self.nFlowFieldZ[idx] = 0
+
+        # 2) Propagate a wave (i.e. flood-fill) from target location.
+        #    I use a tuple of (x, y, distance) though you could use
+        #    a struct or similar.
+
+        # Add the first discovered node - the target location, with a
+        # distance of 1.
+        nodes = []
+        nodes.append((self.nEndX, self.nEndY, 1))
+
+        while nodes:
+
+            # Each iteration through the discovered nodes may create newly
+            # discovered nodes, so I maintain a second list. It's important
+            # not to contaminate the list being iterated through.
+            new_nodes = []
+
+            for node in nodes:
+                x = node[0]  # map x-coordinate
+                y = node[1]  # map y-coordinate
+                d = node[2]  # distance from target location
+
+                # Set distance count for this node. Note that when we add nodes
+                # we add 1 to this distance. This emulates propagating a new
+                # wave across the map, where the front of that wave increments
+                # each iteration. In this way we can propagate distance
+                # information 'away from target location'.
+                self.nFlowFieldZ[self.p(x, y)] = d
+
+                # Add neighbour nodes if unmarked, i.e. their "height" is 0.
+                # Any discovered node or obstacle will be non-zero.
+
+                # Check East
+                if ((x + 1) < self.nMapWidth and
+                        self.nFlowFieldZ[self.p(x + 1, y)] == 0):
+                    new_nodes.append((x + 1, y, d + 1))
+
+                # Check West
+                if ((x - 1) >= 0 and self.nFlowFieldZ[self.p(x - 1, y)] == 0):
+                    new_nodes.append((x - 1, y, d + 1))
+
+                # Check South
+                if ((y + 1) < self.nMapHeight and
+                        self.nFlowFieldZ[self.p(x, y + 1)] == 0):
+                    new_nodes.append((x, y + 1, d + 1))
+
+                # Check North
+                if ((y - 1) >= 0 and self.nFlowFieldZ[self.p(x, y - 1)] == 0):
+                    new_nodes.append((x, y - 1, d + 1))
+
+            # We will now have potentially multiple nodes for a single
+            # location. This means our algorithm will never complete! So
+            # we must remove duplicates from our new node list.
+            new_nodes = list(set(new_nodes))
+
+            # We've now processed all the discovered nodes, so clear the list
+            # and add the newly discovered nodes for processing on the next
+            # iteration.
+            nodes = []
+            nodes.extend(new_nodes)
+
+            # When there are no more newly discovered nodes, we have "flood
+            # filled" the entire map. The propagation phase of the algorithm is
+            # complete.
+
+        # 3) Create Path. Starting from a start location, create a path of
+        #    nodes until you reach the target location. At each node fine the
+        #    neighbour with the lowest "distance" score.
+        self.path = []
+        self.path.append((self.nStartX, self.nStartY))
+
+        nLocX = self.nStartX
+        nLocY = self.nStartY
+        bNoPath = False
+
+        while (not (nLocX == self.nEndX and nLocY == self.nEndY) and
+                (not bNoPath)):
+            listNeighbours = []
+
+            # 4-Way Connectivity
+            nIdx = self.p(nLocX, nLocY-1)
+            eIdx = self.p(nLocX+1, nLocY)
+            sIdx = self.p(nLocX, nLocY+1)
+            wIdx = self.p(nLocX-1, nLocY)
+
+            if (self.nFlowFieldZ[nIdx] > 0 and (nLocY - 1) >= 0):
+                listNeighbours.append(
+                    (nLocX, nLocY - 1, self.nFlowFieldZ[nIdx]))
+
+            if ((nLocX + 1) < self.nMapWidth and self.nFlowFieldZ[eIdx] > 0):
+                listNeighbours.append(
+                    (nLocX + 1, nLocY, self.nFlowFieldZ[eIdx]))
+
+            if (self.nFlowFieldZ[sIdx] > 0 and (nLocY + 1) < self.nMapHeight):
+                listNeighbours.append(
+                    (nLocX, nLocY + 1, self.nFlowFieldZ[sIdx]))
+
+            if ((nLocX - 1) >= 0 and self.nFlowFieldZ[wIdx] > 0):
+                listNeighbours.append(
+                    (nLocX - 1, nLocY, self.nFlowFieldZ[wIdx]))
+
+            # 8-Way Connectivity
+            nwIdx = self.p(nLocX-1, nLocY-1)
+            neIdx = self.p(nLocX+1, nLocY-1)
+            swIdx = self.p(nLocX-1, nLocY+1)
+            seIdx = self.p(nLocX+1, nLocY+1)
+
+            if self.connectivity == 8:
+                if ((nLocX - 1) >= 0 and (nLocY - 1) >= 0 and
+                        self.nFlowFieldZ[nwIdx] > 0):
+                    listNeighbours.append(
+                        (nLocX - 1, nLocY - 1, self.nFlowFieldZ[nwIdx]))
+
+                if ((nLocX + 1) < self.nMapWidth and (nLocY - 1) >= 0 and
+                        self.nFlowFieldZ[neIdx] > 0):
+                    listNeighbours.append(
+                        (nLocX + 1, nLocY - 1, self.nFlowFieldZ[neIdx]))
+
+                if ((nLocX - 1) >= 0 and (nLocY + 1) < self.nMapHeight and
+                        self.nFlowFieldZ[swIdx] > 0):
+                    listNeighbours.append(
+                        (nLocX - 1, nLocY + 1, self.nFlowFieldZ[swIdx]))
+
+                if ((nLocX + 1) < self.nMapWidth and
+                        (nLocY + 1) < self.nMapHeight and
+                        self.nFlowFieldZ[seIdx] > 0):
+                    listNeighbours.append(
+                        (nLocX + 1, nLocY + 1, self.nFlowFieldZ[seIdx]))
+
+            # Sort the nodes based on the distance
+            listNeighbours.sort(key=lambda tup: tup[2])
+
+            # Neighbour is invalid of no possible path
+            if not listNeighbours:
+                bNoPath = True
+            else:
+                nLocX = listNeighbours[0][0]
+                nLocY = listNeighbours[0][1]
+                self.path.append((nLocX, nLocY))
+
+
+# Main loop
+def main(width, height):
+    pf = PathFinder(width, height)
+    pf.find_path()
+
+    # Run game
+    flag = True
+    while flag:
+        # set window background color
+        pf.window.fill((0, 0, 0))
+
+        # event handling
+        nMouseX, nMouseY = pygame.mouse.get_pos()
+        nSelectedCellX = nMouseX // pf.nCellSize
+        nSelectedCellY = nMouseY // pf.nCellSize
+        idx = pf.p(nSelectedCellX, nSelectedCellY)
+
+        for event in pygame.event.get():
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                if (nSelectedCellX != pf.nStartX or
+                   nSelectedCellY != pf.nStartY) and \
+                   (nSelectedCellX != pf.nEndX or
+                   nSelectedCellY != pf.nEndY):
+                    pf.bObstacleMap[idx] = not pf.bObstacleMap[idx]
+
+                    # find the shortest path between the start and end point
+                    pf.find_path()
+
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 2:
+                pf.nStartX = nSelectedCellX
+                pf.nStartY = nSelectedCellY
+
+                pf.bObstacleMap[idx] = 0
+
+                # find the shortest path between the start and end point
+                pf.find_path()
+
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 3:
+                pf.nEndX = nSelectedCellX
+                pf.nEndY = nSelectedCellY
+
+                pf.bObstacleMap[idx] = 0
+
+                # find the shortest path between the start and end point
+                pf.find_path()
+
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_q:
+                    pf.nWave += 1
+                if event.key == pygame.K_a:
+                    pf.nWave -= 1
+                    if pf.nWave < 0:
+                        pf.nWave = 1
+                    if pf.nWave > max(pf.nFlowFieldZ):
+                        pf.nWave = max(pf.nFlowFieldZ)
+                if event.key == pygame.K_z:
+                    pf.bShowText = not pf.bShowText
+
+            if event.type == pygame.QUIT:
+                flag = False
+
+        # draw the 2D grid
+        pf.draw_grid()
+
+        # draw the shortest path
+        pf.draw_path()
+
+        # update window
+        pygame.display.update()
+
+
+if __name__ == '__main__':
+    pygame.init()
+    main(512, 480)
+    pygame.quit()
