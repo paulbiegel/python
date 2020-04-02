@@ -9,6 +9,7 @@
     - Space Bar        : check values
                          green background: correct value
                          red background: incorrect value
+    - K_DEL            : delete value from selected square
     - K_n              : start new game
 
   Author: Jeroen Hamers
@@ -295,6 +296,10 @@ def main(width, height, grid):
                     grid.user_grid[ncy][ncx] = 8
                 elif event.key == pygame.K_9:
                     grid.user_grid[ncy][ncx] = 9
+
+                # Delete the value of the current selected square
+                elif event.key == pygame.K_DELETE:
+                    grid.user_grid[nSelectedCellY][nSelectedCellX] = 0
 
             # Toggle the display of a border around the selected
             # square on or off.
