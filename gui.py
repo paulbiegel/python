@@ -278,23 +278,23 @@ def main(width, height, grid):
 
                 # Display the numbers the user typed in and store
                 # them in the grid.
-                elif event.key == pygame.K_1:
+                elif event.key == pygame.K_1 or event.key == pygame.K_KP1:
                     grid.user_grid[ncy][ncx] = 1
-                elif event.key == pygame.K_2:
+                elif event.key == pygame.K_2 or event.key == pygame.K_KP2:
                     grid.user_grid[ncy][ncx] = 2
-                elif event.key == pygame.K_3:
+                elif event.key == pygame.K_3 or event.key == pygame.K_KP3:
                     grid.user_grid[ncy][ncx] = 3
-                elif event.key == pygame.K_4:
+                elif event.key == pygame.K_4 or event.key == pygame.K_KP4:
                     grid.user_grid[ncy][ncx] = 4
-                elif event.key == pygame.K_5:
+                elif event.key == pygame.K_5 or event.key == pygame.K_KP5:
                     grid.user_grid[ncy][ncx] = 5
-                elif event.key == pygame.K_6:
+                elif event.key == pygame.K_6 or event.key == pygame.K_KP6:
                     grid.user_grid[ncy][ncx] = 6
-                elif event.key == pygame.K_7:
+                elif event.key == pygame.K_7 or event.key == pygame.K_KP7:
                     grid.user_grid[ncy][ncx] = 7
-                elif event.key == pygame.K_8:
+                elif event.key == pygame.K_8 or event.key == pygame.K_KP8:
                     grid.user_grid[ncy][ncx] = 8
-                elif event.key == pygame.K_9:
+                elif event.key == pygame.K_9 or event.key == pygame.K_KP9:
                     grid.user_grid[ncy][ncx] = 9
 
                 # Delete the value of the current selected square
