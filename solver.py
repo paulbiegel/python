@@ -29,6 +29,8 @@ def solve(grid):
             if solve(grid):
                 return grid
 
+            # If the current values do not lead to
+            # success, change the value back to 0
             grid[row][col] = 0
 
     return False
