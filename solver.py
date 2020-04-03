@@ -6,10 +6,11 @@
   This Soduku solver uses the backtracking algorithm.
 
   Author: Jeroen Hamers
-  Date: April 2, 2020
+  Date: April 3, 2020
 """
 
 import math
+from numpy import array, reshape
 
 
 def solve(grid):
@@ -69,19 +70,23 @@ def find_empty(grid):
     return None
 
 
+def main(grid, DIM_ROW):
+    grid = array(grid).reshape((DIM_ROW, DIM_ROW)).tolist()
+    return solve(grid)
+
 if __name__ == '__main__':
 
-    grid = [[0,0,0,0,9,0,7,5,0],
-             [0,7,0,0,0,0,9,0,4],
-             [1,0,0,4,0,0,0,8,3],
-             [0,0,1,5,8,0,6,0,0],
-             [0,3,0,0,0,6,5,0,1],
-             [6,0,9,0,0,3,0,2,0],
-             [0,4,0,8,0,7,0,0,2],
-             [0,0,8,0,6,0,3,0,0],
-             [0,0,5,0,2,1,0,0,9]]
+    grid = [0,0,0,0,9,0,7,5,0]
+    grid.extend([0,7,0,0,0,0,9,0,4])
+    grid.extend([1,0,0,4,0,0,0,8,3])
+    grid.extend([0,0,1,5,8,0,6,0,0])
+    grid.extend([0,3,0,0,0,6,5,0,1])
+    grid.extend([6,0,9,0,0,3,0,2,0])
+    grid.extend([0,4,0,8,0,7,0,0,2])
+    grid.extend([0,0,8,0,6,0,3,0,0])
+    grid.extend([0,0,5,0,2,1,0,0,9])
 
-    solved_grid = solve(grid)
+    solved_grid = main(grid, 9)
     if solved_grid:
         print(solved_grid)
     else:
