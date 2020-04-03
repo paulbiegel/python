@@ -4,16 +4,18 @@
   Sudoku Graphical User Interface
 
   user interaction:
-    - Left Mouse Button: select squares
-    - K_1 to K_9       : type in values
-    - Space Bar        : check values
-                         green background: correct value
-                         red background: incorrect value
-    - K_DEL            : delete value from selected square
+    - Left Mouse Button: select cells
+    - K_1 to K_9       : add/delete selected cell values in sketch mode
+                         add/change selected cell value in normal mode
+    - K_DEL            : delete selected cell value in normal mode
+    - K_SPACE          : turn on/off sketch functionality
+    - K_RETURN         : check the values
+                         green background: correct
+                         red background: fault
     - K_n              : start new game
 
   Author: Jeroen Hamers
-  Date: April 2, 2020
+  Date: April 3, 2020
 """
 
 import os
@@ -24,19 +26,27 @@ import copy
 import solver
 import math
 
+pygame.font.init()
+
 # Makes sure that the pygame window will be placed at
 # the center of the screen.
 os.environ['SDL_VIDEO_CENTERED'] = '1'
 
 # Constant definitions.
-pygame.font.init()
-FONT = pygame.font.SysFont('comicsans', 40)
+CELLSIZE = 60
+DIM_ROW = 9
+DIM_CELL = 3
+
+GLOBAL_FONT = pygame.font.SysFont('comicsans', 40)
+LOCAL_FONT = pygame.font.SysFont('comicsans', 20)
+
 BLACK = pygame.Color(0, 0, 0)
 WHITE = pygame.Color(255, 255, 255)
-RED = pygame.Color(255, 0, 0)
+RED = pygame.Color(150, 0, 0)
 GREEN = pygame.Color(0, 150, 0)
 BLUE = pygame.Color(0, 0, 255)
-GREY = pygame.Color(200, 200, 200)
+GREY_SEL = pygame.Color(200, 200, 200)
+GREY_SKETCH = pygame.Color(130, 130, 130)
 
 # The file path to a document containing 1 million
 # different Sudoku grids. Each line consists of a
@@ -47,8 +57,10 @@ FPATH = os.path.join(
 )
 
 
-# Flatten a 2D list into 1D
-flatten = lambda mainlist: [item for sublist in mainlist for item in sublist]
+# Lambda functions.
+f1 = lambda row, col: row * DIM_ROW + col
+f2 = lambda idx: (math.floor(idx / DIM_ROW), idx % DIM_ROW)
+f3 = lambda mainlist: [item for sublist in mainlist for item in sublist]
 
 
 # Read in the Sudoku grids and use a pseudo-random
@@ -57,19 +69,11 @@ def get_soduku_grid():
     with open(FPATH, 'r') as fid:
         rows = fid.readlines()
         row = rows[random.randint(0, len(rows))].strip()
-        row = [int(i) for i in row]
 
-    nSquare = round(math.sqrt(len(row)))
-
-    grid = []
-    for i in range(0, len(row), nSquare):
-        grid.append(row[i:i+nSquare])
-
-    return grid
+    return [int(i) for i in row]
 
 
-# This class generates and draws the Sudoku grid on the screen.
-class Grid:
+class Sudoku:
 
     def __init__(self, nScreenWidth, nScreenHeight, grid):
 
@@ -77,243 +81,297 @@ class Grid:
         self.window = pygame.display.set_mode((nScreenWidth, nScreenHeight))
         self.nScreenWidth = nScreenWidth
         self.nScreenHeight = nScreenHeight
-        self.nSquare = len(grid)
-        self.nCellSize = self.nScreenWidth // self.nSquare
+        self.cells = self.create_cells(grid)
 
-        # Set initial selected square.
-        idx = [i for i in range(len(flatten(grid))) if flatten(grid)[i] == 0]
-        self.nCurrentSelectedCellX = idx[0] % self.nSquare
-        self.nCurrentSelectedCellY = math.floor(idx[0] / self.nSquare)
+        # Set initial selected cell.
+        self.nCurrentSelectedCellX, self.nCurrentSelectedCellY = \
+            f2(grid.index(0))
 
-        # Set text properties.
+        # Set text properties
         self.xshift = 7
         self.yshift = 9
-        self.solved_color = WHITE
-        self.user_color = WHITE
 
         # Set boolean properties.
-        self.bShowSolution = False  # show the solved Soduku
+        self.bSketchOn = False
+        self.bShowSolution = False
 
-        # Set solver properties.
-        self.init_grid = copy.deepcopy(grid)
-        self.user_grid = copy.deepcopy(grid)
-        self.solved_grid = solver.solve(grid)
-        self.nCountCorrect = len([i for i in flatten(self.init_grid) if i > 0])
+    def create_cells(self, grid):
+        # solve the sudoku and return the solved grid
+        sgrid = f3(solver.main(grid, DIM_ROW))
 
-    # Draw the grid.
+        # create the individual grid cells
+        cells = []
+        for i in range(len(grid)):
+            x, y = f2(i)
+            cells.append(Cell(x * CELLSIZE, y * CELLSIZE, grid[i], sgrid[i]))
+
+        return cells
+
+
+    # Draw the Sudoku grid.
     def draw_grid(self):
 
         # Draw a border around the selected square.
         self.draw_border_selection()
 
-        # Check the solution and show incorrect values.
-        if self.bShowSolution:
-            self.user_color = WHITE
-            self.check_solution()
-        else:
-            self.user_color = BLUE
+        # Loop through all grid cells.
+        for cell in self.cells:
+            xglob, yglob = cell.global_coors
+            xglob_text = xglob + CELLSIZE // 2 - self.xshift
+            yglob_text = yglob + CELLSIZE // 2 - self.yshift
+
+            local = cell.local_coors
+
+            ivalue = cell.init_value
+            uvalue = cell.user_value
+            svalue = cell.solved_value
+
+            # Display initial cell values
+            if ivalue > 0:
+                self.display_numbers(
+                    xglob_text, yglob_text, ivalue, GLOBAL_FONT, BLACK)
+
+            # Check if the "normal", "sketch" or "solution"
+            # mode is toggled.
+            if self.bShowSolution:
+                color_user = WHITE
+
+                # Only check user input values.
+                if uvalue > 0:
+                    if uvalue == svalue:
+                        bcolor = GREEN
+                        color_sketch = GREEN
+                    else:
+                        bcolor = RED
+                        color_sketch = RED
+
+                    if uvalue > ivalue:
+                        pygame.draw.rect(
+                            self.window, bcolor,
+                            (xglob, yglob, CELLSIZE, CELLSIZE))
+
+            elif self.bSketchOn:
+                color_user = GREY_SKETCH
+                color_sketch = BLUE
+            else:
+                color_user = BLUE
+                color_sketch = GREY_SKETCH
+
+            # Change the layer order when "sketch" mode
+            # is turned on/off to optimize display.
+            if self.bSketchOn:
+
+                # Only check user input values.
+                if uvalue > ivalue:
+                    self.display_numbers(
+                        xglob_text, yglob_text, uvalue,
+                        GLOBAL_FONT, color_user)
+
+                for i in range(len(local)):
+                    if cell.sketch_values[i]:
+                        self.display_numbers(
+                            local[i][0], local[i][1],
+                            i+1, LOCAL_FONT, color_sketch)
+
+            else:
+                for i in range(len(local)):
+                    if cell.sketch_values[i]:
+                        self.display_numbers(
+                            local[i][0], local[i][1],
+                            i+1, LOCAL_FONT, color_sketch)
+
+                # Only check user input values.
+                if uvalue > ivalue:
+                    self.display_numbers(
+                        xglob_text, yglob_text, uvalue,
+                        GLOBAL_FONT, color_user)
 
         # Draw a border around the grid.
         pygame.draw.rect(self.window, BLACK, self.window.get_rect(), 3)
 
-        # Draw lines to create the individual squares.
-        n = math.sqrt(self.nSquare)
-        for i in range(1, self.nSquare):
+        # Draw lines to create the individual cells.
+        for i in range(1, DIM_ROW):
             width = 1
-            if i % n == 0:
+            if i % DIM_CELL == 0:
                 width = 3
 
             # Draw vertical lines.
             pygame.draw.line(
                 self.window, BLACK,
-                (i * self.nCellSize, 0),
-                (i * self.nCellSize, self.nScreenHeight), width)
+                (i * CELLSIZE, 0),
+                (i * CELLSIZE, self.nScreenHeight), width)
 
             # Draw horizontal lines.
             pygame.draw.line(
                 self.window, BLACK,
-                (0, i * self.nCellSize),
-                (self.nScreenWidth, i * self.nCellSize), width)
-
-        # Draw the initial grid, the user grid and the solved grid.
-        for i in range(0, self.nSquare):
-            for j in range(0, self.nSquare):
-
-                # Select the square values.
-                ivalue = self.init_grid[j][i]    # initial grid value
-                uvalue = self.user_grid[j][i]    # user grid value
-                svalue = self.solved_grid[j][i]  # solved grid value
-
-                # Only display initial grid values larger than zeros.
-                # A zero resembles an empty square.
-                if ivalue > 0:
-
-                    text_init_grid = FONT.render(f"{ivalue}", True, BLACK)
-
-                    self.window.blit(text_init_grid,
-                        (i * self.nCellSize +
-                            self.nCellSize // 2 - self.xshift,
-                         j * self.nCellSize +
-                            self.nCellSize // 2 - self.yshift))
-
-                else:
-
-                    # Check if the user typed in a value, if so display it.
-                    if uvalue > ivalue:
-
-                        text_user_grid = FONT.render(
-                            f"{uvalue}", True, self.user_color)
-
-                        self.window.blit(text_user_grid,
-                            (i * self.nCellSize +
-                                self.nCellSize // 2 - self.xshift,
-                             j * self.nCellSize +
-                                self.nCellSize // 2 - self.yshift))
+                (0, i * CELLSIZE),
+                (self.nScreenWidth, i * CELLSIZE), width)
 
     # Draw a border around the selected square.
     def draw_border_selection(self):
-        x = self.nCurrentSelectedCellX * self.nCellSize
-        y = self.nCurrentSelectedCellY * self.nCellSize
+        x = self.nCurrentSelectedCellX * CELLSIZE
+        y = self.nCurrentSelectedCellY * CELLSIZE
 
-        pygame.draw.rect(self.window, GREY,
-            (x, y, self.nCellSize, self.nCellSize))
+        pygame.draw.rect(self.window, GREY_SEL, (x, y, CELLSIZE, CELLSIZE))
 
-    # Draw a border around the checked square.
-    def draw_border_check(self, sx, sy, bordercolor):
-        x = sx * self.nCellSize
-        y = sy * self.nCellSize
+    # Display the numbers.
+    def display_numbers(self, x, y, value, font, color):
+        self.window.blit(font.render(f"{value}", True, color), (x, y))
 
-        pygame.draw.rect(self.window, bordercolor,
-            (x, y, self.nCellSize, self.nCellSize))
 
-    # Check if the typed in numbers are correct.
-    def check_solution(self):
-        user_values = flatten(self.user_grid)
-        solved_values = flatten(self.solved_grid)
-        init_values = flatten(self.init_grid)
+class Cell:
 
-        # Check for correct values.
-        correctIdx = [
-            i for i in range(len(user_values)) if
-            user_values[i] == solved_values[i] and user_values[i]>0
-            and user_values[i] != init_values[i]
-        ]
+    def __init__(self, xpos, ypos, value, svalue):
 
-        # Draw a green border around the squares that contain
-        # a correct value
-        for idx in correctIdx:
-            self.draw_border_check(
-                idx % self.nSquare, math.floor(idx / self.nSquare), GREEN
-            )
+        # Set text properties
+        self.xshift = 7
+        self.yshift = 5
 
-        # Check for incorrect values.
-        incorrectIdx = [
-            i for i in range(len(user_values)) if
-            user_values[i] != solved_values[i] and user_values[i]>0
-        ]
+        # Set global and local cell coordinates
+        self.global_coors = (xpos, ypos)
+        self.local_coors = self.set_local_coors(xpos, ypos)
 
-        # Draw a red border around the squares that contain
-        # an incorrect value
-        for idx in incorrectIdx:
-            self.draw_border_check(
-                idx % self.nSquare, math.floor(idx / self.nSquare), RED
-            )
+        self.init_value = value
+        self.user_value = value
+        self.solved_value = svalue
+        self.sketch_values = [False] * 9
+
+        # Set boolean properties.
+        self.bCanModifyValue = True if value == 0 else False
+        self.bCorrectValueFound = False
+
+    def set_local_coors(self, xglob, yglob):
+        local = []
+
+        for i in range(DIM_CELL):
+            for j in range(DIM_CELL):
+                local.append((
+                    xglob + j*(CELLSIZE // 3) + self.xshift,
+                    yglob + i*(CELLSIZE // 3) + self.yshift
+                ))
+
+        return local
 
 # Main loop.
 def main(width, height, grid):
 
     # Initialize the Sudoku grid.
-    grid = Grid(width, height, grid)
+    sudoku = Sudoku(width, height, grid)
 
     # Run until closed by the user.
     flag = True
     while flag:
 
         # Set the window background color.
-        grid.window.fill((255, 255, 255))
+        sudoku.window.fill(WHITE)
 
         # Event handling.
 
-        # Define the square based on the current location of
+        # Select the cell based on the current location of
         # the mouse cursor.
         nMouseX, nMouseY = pygame.mouse.get_pos()
-        nSelectedCellX = nMouseX // grid.nCellSize
-        nSelectedCellY = nMouseY // grid.nCellSize
+        nSelectedCellX = nMouseX // CELLSIZE
+        nSelectedCellY = nMouseY // CELLSIZE
 
-        ncx = grid.nCurrentSelectedCellX
-        ncy = grid.nCurrentSelectedCellY
+        cell = sudoku.cells[
+            f1(sudoku.nCurrentSelectedCellX, sudoku.nCurrentSelectedCellY)]
 
         # Loop through all events
         for event in pygame.event.get():
 
             # Check if a key is pressed.
             if event.type == pygame.KEYDOWN:
-                grid.user_color = BLUE
 
                 # If the space bar is pressed toggle the display
-                # of the solved grid on or off.
+                # of the sketche d grid on or off.
                 if event.key == pygame.K_SPACE:
-                    grid.bShowSolution = not grid.bShowSolution
-
-                # If the "n" key is pressed, load a new grid and
-                # reset all the variables.
-                elif event.key == pygame.K_n:
-                    grid.bShowSolution = False
-                    grid.solved_color = WHITE
-                    grid.user_color = WHITE
-
-                    # Load a new random Sudoku grid.
-                    new_grid = get_soduku_grid()
-
-                    idx = [i for i in range(len(flatten(new_grid))) if \
-                        flatten(new_grid)[i] == 0]
-                    grid.nCurrentSelectedCellX = idx[0] % grid.nSquare
-                    grid.nCurrentSelectedCellY = math.floor(
-                        idx[0] / grid.nSquare)
-
-                    # Reset all the grid.
-                    grid.init_grid = copy.deepcopy(new_grid)
-                    grid.user_grid = copy.deepcopy(new_grid)
-                    grid.solved_grid = copy.deepcopy(solver.solve(new_grid))
+                    sudoku.bSketchOn = not sudoku.bSketchOn
+                    sudoku.bShowSolution = False
 
                 # Display the numbers the user typed in and store
                 # them in the grid.
                 elif event.key == pygame.K_1 or event.key == pygame.K_KP1:
-                    grid.user_grid[ncy][ncx] = 1
-                elif event.key == pygame.K_2 or event.key == pygame.K_KP2:
-                    grid.user_grid[ncy][ncx] = 2
-                elif event.key == pygame.K_3 or event.key == pygame.K_KP3:
-                    grid.user_grid[ncy][ncx] = 3
-                elif event.key == pygame.K_4 or event.key == pygame.K_KP4:
-                    grid.user_grid[ncy][ncx] = 4
-                elif event.key == pygame.K_5 or event.key == pygame.K_KP5:
-                    grid.user_grid[ncy][ncx] = 5
-                elif event.key == pygame.K_6 or event.key == pygame.K_KP6:
-                    grid.user_grid[ncy][ncx] = 6
-                elif event.key == pygame.K_7 or event.key == pygame.K_KP7:
-                    grid.user_grid[ncy][ncx] = 7
-                elif event.key == pygame.K_8 or event.key == pygame.K_KP8:
-                    grid.user_grid[ncy][ncx] = 8
-                elif event.key == pygame.K_9 or event.key == pygame.K_KP9:
-                    grid.user_grid[ncy][ncx] = 9
+                    if sudoku.bSketchOn:
+                        cell.sketch_values[0] = not cell.sketch_values[0]
+                    else:
+                        cell.user_value = 1
 
-                # Delete the value of the current selected square
+                elif event.key == pygame.K_2 or event.key == pygame.K_KP2:
+                    if sudoku.bSketchOn:
+                        cell.sketch_values[1] = not cell.sketch_values[1]
+                    else:
+                        cell.user_value = 2
+
+                elif event.key == pygame.K_3 or event.key == pygame.K_KP3:
+                    if sudoku.bSketchOn:
+                        cell.sketch_values[2] = not cell.sketch_values[2]
+                    else:
+                        cell.user_value = 3
+
+                elif event.key == pygame.K_4 or event.key == pygame.K_KP4:
+                    if sudoku.bSketchOn:
+                        cell.sketch_values[3] = not cell.sketch_values[3]
+                    else:
+                        cell.user_value = 4
+
+                elif event.key == pygame.K_5 or event.key == pygame.K_KP5:
+                    if sudoku.bSketchOn:
+                        cell.sketch_values[4] = not cell.sketch_values[4]
+                    else:
+                        cell.user_value = 5
+
+                elif event.key == pygame.K_6 or event.key == pygame.K_KP6:
+                    if sudoku.bSketchOn:
+                        cell.sketch_values[5] = not cell.sketch_values[5]
+                    else:
+                        cell.user_value = 6
+
+                elif event.key == pygame.K_7 or event.key == pygame.K_KP7:
+                    if sudoku.bSketchOn:
+                        cell.sketch_values[6] = not cell.sketch_values[6]
+                    else:
+                        cell.user_value = 7
+
+                elif event.key == pygame.K_8 or event.key == pygame.K_KP8:
+                    if sudoku.bSketchOn:
+                        cell.sketch_values[7] = not cell.sketch_values[7]
+                    else:
+                        cell.user_value = 8
+
+                elif event.key == pygame.K_9 or event.key == pygame.K_KP9:
+                    if sudoku.bSketchOn:
+                        cell.sketch_values[8] = not cell.sketch_values[8]
+                    else:
+                        cell.user_value = 9
+
+                # Delete the value of the current selected cell.
                 elif event.key == pygame.K_DELETE:
-                    grid.user_grid[nSelectedCellY][nSelectedCellX] = 0
+                    cell.user_value = 0
+
+                # Show solution values.
+                elif event.key == pygame.K_RETURN:
+                    if not sudoku.bSketchOn:
+                        sudoku.bShowSolution = not sudoku.bShowSolution
+
+                # Start a new game.
+                elif event.key == pygame.K_n:
+                    del sudoku
+                    sudoku = Sudoku(540, 540, get_soduku_grid())
 
             # Toggle the display of a border around the selected
-            # square on or off.
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if grid.init_grid[nSelectedCellY][nSelectedCellX] == 0:
-                    grid.nCurrentSelectedCellX = nSelectedCellX
-                    grid.nCurrentSelectedCellY = nSelectedCellY
+            # cell on or off.
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                new_cell = sudoku.cells[f1(nSelectedCellX, nSelectedCellY)]
+                if new_cell.init_value == 0:
+                    sudoku.nCurrentSelectedCellX = nSelectedCellX
+                    sudoku.nCurrentSelectedCellY = nSelectedCellY
 
             # Quit the loop when the user has pressed the "x" button.
-            if event.type == pygame.QUIT:
+            elif event.type == pygame.QUIT:
                 flag = False
 
         # Redraw the grid.
-        grid.draw_grid()
+        sudoku.draw_grid()
 
         # Update the window.
         pygame.display.update()
